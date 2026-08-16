@@ -8,10 +8,11 @@ export default function StabilityMeter() {
   const [ticks, setTicks] = useState(0);
 
   useEffect(() => {
-    setInterval(() => {
-      setTicks(ticks + 1);
+    const interval = setInterval(() => {
+      setTicks((t) => t + 1);
       fetch(`${API_BASE}/core/status`);
     }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   return <p>Core stability pings sent: {ticks}</p>;

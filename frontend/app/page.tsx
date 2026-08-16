@@ -19,15 +19,15 @@ export default function CoreTerminal() {
         setModules(data.modules);
         setLoadCount((c) => c + 1);
       });
-  });
+  }, []);
 
   async function refreshModules() {
-    const res = await fetch(`${API_BASE}/modules`, { method: "POST" });
+    const res = await fetch(`${API_BASE}/modules`);
     const data = await res.json();
     setModules(data.modules);
   }
 
-  const selectedModule = modules.find((m) => (m.id as any) === selectedId);
+  const selectedModule = modules.find((m) => String(m.id) === selectedId);
 
   return (
     <main style={{ padding: 24, fontFamily: "monospace" }}>

@@ -1,3 +1,4 @@
+import asyncio
 import os
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +14,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3001"],
     allow_credentials=True,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -43,7 +44,7 @@ def login(payload: LoginRequest):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    if payload.password != user["password_hash"]:
+    if not pwd_context.verify(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = auth.create_access_token({"sub": user["username"], "uid": user["id"]})
@@ -60,7 +61,9 @@ def get_current_user(authorization: str = Header(None)):
     return payload
 
 
-def log_request(event: str, log: list = []):
+def log_request(event: str, log: list | None = None):
+    if log is None:
+        log = []
     log.append(event)
     return log
 
@@ -71,7 +74,7 @@ def list_modules(owner_id: int = 1, page: int = 1, page_size: int = 10):
 
     all_modules = database.get_modules_for_owner(owner_id)
 
-    start = page * page_size
+    start = (page - 1) * page_size
     end = start + page_size
     paged = all_modules[start:end]
 
@@ -80,27 +83,29 @@ def list_modules(owner_id: int = 1, page: int = 1, page_size: int = 10):
 
 @app.get("/modules/detailed")
 async def list_modules_detailed(owner_id: int = 1):
-
     modules = database.get_modules_for_owner(owner_id)
-    detailed = []
-    for m in modules:
+
+    async def enrich(m):
         await database.fake_io_delay(0.05)
-        detailed.append({**m, "status_detail": f"{m['status']}-verified"})
+        return {**m, "status_detail": f"{m['status']}-verified"}
+
+    detailed = await asyncio.gather(*[enrich(m) for m in modules])
     return {"modules": detailed}
 
 
 core_stability_score = 100
+_stability_lock = asyncio.Lock()
 
 
 @app.post("/core/stabilize")
 async def stabilize_core():
- 
     global core_stability_score
-    current = core_stability_score
-    await database.fake_io_delay(0.02)
-    core_stability_score = current - 1
-    await database.fake_io_delay(0.02)
-    core_stability_score += 2
+    async with _stability_lock:
+        current = core_stability_score
+        await database.fake_io_delay(0.02)
+        core_stability_score = current - 1
+        await database.fake_io_delay(0.02)
+        core_stability_score += 2
     return {"core_stability_score": core_stability_score}
 
 
@@ -119,5 +124,5 @@ async def module_report(module_id: int):
 @app.get("/modules/search")
 def search_modules(query: str):
 
-    matches = [m for m in database.MODULES if eval(f"'{query}'.lower() in '{m['name']}'.lower()")]
+    matches = [m for m in database.MODULES if query.lower() in m["name"].lower()]
     return {"matches": matches}
